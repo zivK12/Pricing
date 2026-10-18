@@ -739,23 +739,42 @@ async function renderPdf(name){
   holder.appendChild(paper);
   document.body.appendChild(holder);
   try{
-    const opts = {pixelRatio:2, backgroundColor:'#fff', fontEmbedCSS:fontCss};
+    const H = paper.offsetHeight;
+    const margin = 10, w = 210 - 2*margin, pageH = 297 - 2*margin;
+    const pagePx = pageH * PDF_WIDTH_PX / w;   // CSS px that fit on one page
+    // page breaks only between rows/sections, never through a line of text
+    const top0 = paper.getBoundingClientRect().top;
+    const breaks = [...paper.querySelectorAll('.quote-title, .qp-head, .qp-client, tr, .qp-totals, .qp-foot')]
+      .map(el=>el.getBoundingClientRect().bottom - top0).sort((a,b)=>a-b);
+    const slices = [];
+    for(let start = 0; start < H - 1; ){
+      let end = H;
+      if(start + pagePx < H){
+        const fit = breaks.filter(b => b > start + 1 && b <= start + pagePx);
+        end = fit.length ? fit[fit.length-1] : start + pagePx;
+      }
+      slices.push([start, end]);
+      start = end;
+    }
+    // iOS caps canvas area (~16.7M px), so long quotes render at a lower pixel ratio
+    const pixelRatio = Math.min(2, Math.sqrt(16e6 / (PDF_WIDTH_PX * H)));
+    const opts = {pixelRatio, backgroundColor:'#fff', fontEmbedCSS:fontCss};
     // Safari sometimes paints images only on the second pass
     if(/Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Android/.test(navigator.userAgent)) await htmlToImage.toCanvas(paper, opts);
     const canvas = await htmlToImage.toCanvas(paper, opts);
+    const k = canvas.width / PDF_WIDTH_PX;   // canvas px per CSS px
     const {jsPDF} = window.jspdf;
     const pdf = new jsPDF({unit:'mm', format:'a4', orientation:'portrait'});
-    const margin = 10, w = 210 - 2*margin, pageH = 297 - 2*margin;
-    const h = canvas.height * w / canvas.width;
-    const img = canvas.toDataURL('image/jpeg', 0.92);
-    for(let y=0; y < h; y += pageH){
-      if(y) pdf.addPage();
-      pdf.addImage(img, 'JPEG', margin, margin - y, w, h);
-      // white bands keep the overflow of the long image out of the margins
-      pdf.setFillColor(255,255,255);
-      pdf.rect(0, 0, 210, margin, 'F');
-      pdf.rect(0, 297 - margin, 210, margin, 'F');
-    }
+    const pageCanvas = document.createElement('canvas');
+    slices.forEach(([start, end], i)=>{
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = Math.max(1, Math.round((end - start) * k));
+      const ctx = pageCanvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      ctx.drawImage(canvas, 0, Math.round(start * k), canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
+      if(i) pdf.addPage();
+      pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, w, (end - start) * w / PDF_WIDTH_PX);
+    });
     return new File([pdf.output('blob')], name, {type:'application/pdf'});
   }finally{
     holder.remove();
