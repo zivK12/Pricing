@@ -806,7 +806,8 @@ async function sendWhatsApp(btn){
     const file = await buildPdf();
     if(canShareFiles){
       try{
-        await navigator.share({files:[file], title:file.name});
+        // files only: on iOS a title/text is handed to WhatsApp as an extra item and its share extension fails to send
+        await navigator.share({files:[file]});
       }catch(e){
         if(e.name==='NotAllowedError'){
           // building took too long and the browser dropped the tap; the PDF is cached so the next tap shares instantly
