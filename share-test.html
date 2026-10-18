@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>בדיקת שיתוף לוואטסאפ</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;background:#F1EFEA;color:#22261F;margin:0;padding:20px 16px 40px}
+  h1{font-size:22px;margin:0 0 6px}
+  p{margin:0 0 18px;color:#6B7064;line-height:1.5}
+  button{display:block;width:100%;margin:0 0 6px;padding:16px;border:none;border-radius:12px;
+    background:#25D366;color:#fff;font-size:17px;font-weight:700;text-align:right}
+  button:disabled{background:#9bbfa6}
+  .res{min-height:22px;margin:0 0 18px;font-size:15px}
+  .ok{color:#3E6B4F}.bad{color:#B4462F}
+</style>
+</head>
+<body>
+<h1>בדיקת שיתוף לוואטסאפ</h1>
+<p>לחץ על כל כפתור בתורו, שלח לעצמך בוואטסאפ, ורשום אם יצאה הודעת השגיאה "Couldn't send message".</p>
+
+<button id="b1" disabled>1. PDF בשם באנגלית (test.pdf)</button>
+<div class="res" id="r1"></div>
+<button id="b2" disabled>2. PDF בשם בעברית (בדיקה.pdf)</button>
+<div class="res" id="r2"></div>
+<button id="b3" disabled>3. תמונה (test.png)</button>
+<div class="res" id="r3"></div>
+<button id="b4">4. טקסט בלבד, בלי קובץ</button>
+<div class="res" id="r4"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// Diagnostic for the WhatsApp "Couldn't send message" error on iPhone.
+// Files are created up front so each tap calls navigator.share immediately.
+const files = {};
+
+function makePdfBlob(){
+  const pdf = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
+  pdf.setFontSize(28);
+  pdf.text('Share test', 20, 30);
+  pdf.setFontSize(14);
+  pdf.text(new Date().toISOString(), 20, 45);
+  return pdf.output('blob');
+}
+function makePngBlob(){
+  const c = document.createElement('canvas');
+  c.width = 400; c.height = 200;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#E8A23B'; ctx.fillRect(0, 0, 400, 200);
+  ctx.fillStyle = '#22261F'; ctx.font = 'bold 40px sans-serif'; ctx.fillText('Share test', 90, 115);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+async function prepare(){
+  const pdf = makePdfBlob();
+  files.b1 = new File([pdf], 'test.pdf', {type:'application/pdf'});
+  files.b2 = new File([pdf], 'בדיקה.pdf', {type:'application/pdf'});
+  files.b3 = new File([await makePngBlob()], 'test.png', {type:'image/png'});
+  ['b1','b2','b3'].forEach(id => document.getElementById(id).disabled = false);
+}
+
+function report(id, ok, msg){
+  const el = document.getElementById('r' + id.slice(1));
+  el.className = 'res ' + (ok ? 'ok' : 'bad');
+  el.textContent = msg;
+}
+
+async function share(id, data){
+  if(!navigator.share){ report(id, false, 'הדפדפן לא תומך בשיתוף'); return; }
+  if(data.files && !(navigator.canShare && navigator.canShare(data))){ report(id, false, 'הדפדפן לא מאפשר לשתף קובץ כזה'); return; }
+  try{
+    await navigator.share(data);
+    report(id, true, 'חלון השיתוף נסגר. עכשיו בדוק בוואטסאפ אם ההודעה יצאה או קיבלה סימן שגיאה.');
+  }catch(e){
+    report(id, false, 'שגיאה: ' + e.name);
+  }
+}
+
+document.getElementById('b1').onclick = () => share('b1', {files:[files.b1]});
+document.getElementById('b2').onclick = () => share('b2', {files:[files.b2]});
+document.getElementById('b3').onclick = () => share('b3', {files:[files.b3]});
+document.getElementById('b4').onclick = () => share('b4', {text:'בדיקת שיתוף טקסט מהאתר'});
+
+prepare().catch(e => report('b1', false, 'לא הצלחתי ליצור קבצים: ' + e.message));
+</script>
+</body>
+</html>
